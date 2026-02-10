@@ -61,9 +61,8 @@ try {
 try {
     console.log(`Scanning repository at: ${repoPath}`);
     const scan = await $`docker run --rm -v ${repoPath}:/repo returntocorp/semgrep:latest semgrep --config=auto /repo`;
-
-    await Bun.write('./dist/semgrep_results.json', scan.stdout);
-    console.log("Scan completed. Results saved to dist/semgrep_results.json");
+    await Bun.write('./dist/semgrep_results.txt', scan.stdout);
+    console.log("Scan completed. Results saved to dist/semgrep_results.txt");
 } catch (error) {
     console.error("Error during scanning:", error);
     process.exit(1);
