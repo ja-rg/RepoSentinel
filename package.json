@@ -1,0 +1,19 @@
+{
+  "name": "vuln-scanner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:api": "bun --watch src/api.ts",
+    "dev:worker": "bun --watch src/worker.ts",
+    "api": "bun src/api.ts",
+    "worker": "bun src/worker.ts"
+  },
+  "dependencies": {},
+  "module": "index.ts",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
