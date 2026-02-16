@@ -49,14 +49,15 @@ Bun.serve({
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
+    /**
+     * Jobs endpoints:
+      - GET /health -> { ok: true }
+      - POST /scan { repoUrl, ref? } -> crea job y devuelve { jobId }
+      - GET /scans -> lista de scans recientes (id, repoUrl, ref, status, created_at)
+     */
 
     // Health
     if (url.pathname === "/health") return json({ ok: true });
-
-    /**
-     * Jobs endpoints:
-      - POST /scan { repoUrl, ref? } -> crea job y devuelve { jobId }
-     */
 
     // Crear scan
     if (url.pathname === "/scan" && req.method === "POST") {
