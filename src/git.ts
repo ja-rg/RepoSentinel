@@ -1,23 +1,18 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { runDocker } from "./docker";
-import { $ } from "bun";
 
 export async function dockerGitClone(params: {
   imgGit: string;
   repoUrl: string;
   ref?: string | null;
   timeoutMs: number;
-  workRoot: string;
-  jobId: string;
+  destinationDir: string;
 }) {
-  const fullPath = process.cwd();
-  const jobDir = join(fullPath, params.workRoot, params.jobId);
-  const repoDir = join(jobDir, "repo");
+  const repoDir = join(params.destinationDir, "repo");
 
-  mkdirSync(jobDir, { recursive: true });
+  mkdirSync(params.destinationDir, { recursive: true });
   rmSync(repoDir, { recursive: true, force: true });
-  mkdirSync(repoDir, { recursive: true });
 
   // Clonamos dentro de /work/repo montado
   // Nota: para repos privados necesitarías token/ssh; aquí lo dejamos público.
@@ -32,7 +27,7 @@ export async function dockerGitClone(params: {
   const clone = await runDocker({
     image: params.imgGit,
     args: cloneArgs,
-    mounts: [{ hostPath: jobDir, containerPath: "/work" }],
+    mounts: [{ hostPath: params.destinationDir, containerPath: "/work" }],
     timeoutMs: params.timeoutMs,
   });
 
@@ -52,7 +47,7 @@ export async function dockerGitClone(params: {
           shellEscape(params.ref)
         }`,
       ],
-      mounts: [{ hostPath: jobDir, containerPath: "/work" }],
+      mounts: [{ hostPath: params.destinationDir, containerPath: "/work" }],
       timeoutMs: params.timeoutMs,
     });
     if (co.timedOut) throw new Error("git checkout timed out");
@@ -61,7 +56,7 @@ export async function dockerGitClone(params: {
     }
   }
 
-  return { jobDir, repoDir };
+  return { repoDir };
 }
 
 // escape mínimo para refs (evita espacios raros)

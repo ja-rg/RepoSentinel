@@ -72,3 +72,40 @@ export async function runDocker(params: {
 
   return { code, stdout, stderr, timedOut };
 }
+
+export async function runHostCommand(params: {
+  cmd: string[];
+  timeoutMs?: number;
+  cwd?: string;
+  env?: Record<string, string>;
+}): Promise<RunResult> {
+  const proc = Bun.spawn(params.cmd, {
+    cwd: params.cwd,
+    env: { ...process.env, ...(params.env ?? {}) },
+    stdout: "pipe",
+    stderr: "pipe"
+  });
+
+  let timedOut = false;
+  let timeout: Timer | undefined;
+  if (params.timeoutMs && params.timeoutMs > 0) {
+    timeout = setTimeout(() => {
+      timedOut = true;
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        // ignore
+      }
+    }, params.timeoutMs);
+  }
+
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited
+  ]);
+
+  if (timeout) clearTimeout(timeout);
+
+  return { code, stdout, stderr, timedOut };
+}

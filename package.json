@@ -1,8 +1,17 @@
 {
   "name": "reposentinel",
-  "module": "index.ts",
+  "module": "src/server.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "api": "bun run api.ts",
+    "worker": "bun run worker.ts",
+    "dev:api": "bun --watch run api.ts",
+    "dev:worker": "bun --watch run worker.ts"
+  },
+  "dependencies": {
+    "hono": "^4.8.5"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },

@@ -16,7 +16,6 @@ export async function runTrivy(params: {
     image: params.imgTrivy,
     args: ["fs", "/work/repo", "--format", "json", "--quiet"],
     mounts: [{ hostPath: params.jobDir, containerPath: "/work" }],
-    workdir: "/",
     env: {
       // cache dentro del job para evitar ensuciar el host
       TRIVY_CACHE_DIR: "/work/.trivy-cache"
@@ -31,18 +30,7 @@ export async function runTrivy(params: {
   // Solución simple: usamos /work/repo montado en /work y apuntamos a /work/repo con -w
   // (si prefieres /repo, cambia el mount)
   // Para no complicar: re-ejecutamos con path real:
-  const r2 = await runDocker({
-    image: params.imgTrivy,
-    args: ["fs", "/work/repo", "--format", "json", "--quiet"],
-    mounts: [{ hostPath: params.jobDir, containerPath: "/work" }],
-    timeoutMs: params.timeoutMs,
-    env: { TRIVY_CACHE_DIR: "/work/.trivy-cache" }
-  });
-
-  if (r2.timedOut) throw new Error("trivy timed out");
-  if (r2.code !== 0) throw new Error(`trivy failed: ${r2.stderr || r2.stdout}`);
-
-  return safeJsonParse(r2.stdout);
+  return safeJsonParse(r.stdout);
 }
 
 export async function runSemgrep(params: {
@@ -64,6 +52,23 @@ export async function runSemgrep(params: {
   return safeJsonParse(r.stdout);
 }
 
+export async function runTrivyImage(params: {
+  imgTrivy: string;
+  imageRef: string;
+  timeoutMs: number;
+}) {
+  const r = await runDocker({
+    image: params.imgTrivy,
+    args: ["image", params.imageRef, "--format", "json", "--quiet"],
+    timeoutMs: params.timeoutMs
+  });
+
+  if (r.timedOut) throw new Error("trivy image timed out");
+  if (r.code !== 0) throw new Error(`trivy image failed: ${r.stderr || r.stdout}`);
+
+  return safeJsonParse(r.stdout);
+}
+
 export async function runGrype(params: {
   imgGrype: string;
   jobDir: string;
@@ -79,6 +84,23 @@ export async function runGrype(params: {
 
   if (r.timedOut) throw new Error("grype timed out");
   if (r.code !== 0) throw new Error(`grype failed: ${r.stderr || r.stdout}`);
+
+  return safeJsonParse(r.stdout);
+}
+
+export async function runGrypeImage(params: {
+  imgGrype: string;
+  imageRef: string;
+  timeoutMs: number;
+}) {
+  const r = await runDocker({
+    image: params.imgGrype,
+    args: [params.imageRef, "-o", "json"],
+    timeoutMs: params.timeoutMs
+  });
+
+  if (r.timedOut) throw new Error("grype image timed out");
+  if (r.code !== 0) throw new Error(`grype image failed: ${r.stderr || r.stdout}`);
 
   return safeJsonParse(r.stdout);
 }
@@ -104,12 +126,22 @@ export function summarizeTrivy(json: any) {
 
 export function summarizeSemgrep(json: any) {
   const findings = Array.isArray(json?.results) ? json.results : [];
-  return { findings: findings.length };
+  const bySeverity: Record<string, number> = {};
+  for (const finding of findings) {
+    const severity = String(finding?.extra?.severity ?? "UNKNOWN").toUpperCase();
+    bySeverity[severity] = (bySeverity[severity] ?? 0) + 1;
+  }
+  return { findings: findings.length, bySeverity };
 }
 
 export function summarizeGrype(json: any) {
   const matches = Array.isArray(json?.matches) ? json.matches : [];
-  return { matches: matches.length };
+  const bySeverity: Record<string, number> = {};
+  for (const match of matches) {
+    const severity = String(match?.vulnerability?.severity ?? "UNKNOWN").toUpperCase();
+    bySeverity[severity] = (bySeverity[severity] ?? 0) + 1;
+  }
+  return { matches: matches.length, bySeverity };
 }
 
 function safeJsonParse(s: string) {

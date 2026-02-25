@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RepoSentinel Control Panel</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="bg-glow"></div>
+    <main class="layout">
+      <header class="hero">
+        <div>
+          <h1>RepoSentinel</h1>
+          <p>Panel operativo de escaneo y observabilidad</p>
+        </div>
+        <div class="hero-actions">
+          <input id="token" placeholder="Bearer token (opcional)" />
+          <button id="btnRefreshStatus">Actualizar estado</button>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Estado del sistema</h2>
+          <div class="status-row">
+            <span id="badgeApi" class="badge neutral">API: verificando</span>
+            <span id="badgeDocker" class="badge neutral">Docker: verificando</span>
+            <span id="badgeRunners" class="badge neutral">Runners: 0</span>
+            <span id="badgeQueue" class="badge neutral">Queue: 0</span>
+          </div>
+        </div>
+        <div class="status-actions">
+          <button id="btnQuickCheck">Preflight rapido</button>
+          <button id="btnDeepCheck">Preflight profundo</button>
+          <small id="preflightHint">El modo profundo valida contenedores de Trivy/Semgrep/Grype.</small>
+        </div>
+        <div id="preflightChecks" class="checks"></div>
+      </section>
+
+      <section class="card">
+        <h2>Crear analisis</h2>
+
+        <div class="tabs" id="jobTabs">
+          <button class="tab is-active" data-tab="repo">Repo / Workspace</button>
+          <button class="tab" data-tab="archive">Archive</button>
+          <button class="tab" data-tab="docker-image">Docker Image</button>
+          <button class="tab" data-tab="dockerfile">Dockerfile</button>
+          <button class="tab" data-tab="manifest">Manifest</button>
+        </div>
+
+        <div class="tab-panels">
+          <div class="panel is-active" data-panel="repo">
+            <div class="grid two">
+              <label>Modo</label>
+              <select id="repoMode">
+                <option value="git_url">Git URL</option>
+                <option value="workspace_path">Workspace path</option>
+              </select>
+              <label>Repo URL</label>
+              <input id="repoUrl" placeholder="https://github.com/owner/repo" />
+              <label>Ref</label>
+              <input id="repoRef" placeholder="main (opcional)" />
+              <label>Workspace path</label>
+              <input id="workspacePath" placeholder="C:/ruta/absoluta/proyecto" />
+            </div>
+            <button data-create="repo">Crear job</button>
+          </div>
+
+          <div class="panel" data-panel="archive">
+            <div class="upload-line">
+              <input id="archiveFile" type="file" />
+              <button data-upload="archive">Subir archive</button>
+              <input id="archiveUploadId" placeholder="upload id" />
+            </div>
+            <button data-create="archive">Crear job</button>
+          </div>
+
+          <div class="panel" data-panel="docker-image">
+            <div class="grid two">
+              <label>Imagen</label>
+              <input id="dockerImage" placeholder="nginx:latest" />
+              <label>
+                <input id="dockerSaveTar" type="checkbox" checked />
+                Guardar tar temporal
+              </label>
+              <label>
+                <input id="dockerRemoveAfter" type="checkbox" checked />
+                Eliminar imagen local al finalizar
+              </label>
+            </div>
+            <button data-create="docker-image">Crear job</button>
+          </div>
+
+          <div class="panel" data-panel="dockerfile">
+            <div class="upload-line">
+              <input id="dockerfileFile" type="file" />
+              <button data-upload="dockerfile">Subir Dockerfile</button>
+              <input id="dockerfileUploadId" placeholder="upload id" />
+            </div>
+            <button data-create="dockerfile">Crear job</button>
+          </div>
+
+          <div class="panel" data-panel="manifest">
+            <div class="upload-line">
+              <input id="manifestFile" type="file" />
+              <button data-upload="k8s">Subir manifiesto</button>
+              <input id="manifestUploadId" placeholder="upload id" />
+            </div>
+            <button data-create="manifest">Crear job</button>
+          </div>
+        </div>
+
+        <div class="gate-box">
+          <h3>Policy / Deploy Gate (opcional)</h3>
+          <div class="grid two">
+            <label>
+              <input id="deployGateEnabled" type="checkbox" />
+              Activar deploy gate
+            </label>
+            <label>Target URL Nuclei
+              <input id="targetUrl" placeholder="http://app.example.com" />
+            </label>
+            <label>Critical max
+              <input id="policyCritical" type="number" value="0" min="0" />
+            </label>
+            <label>High max
+              <input id="policyHigh" type="number" value="0" min="0" />
+            </label>
+          </div>
+          <label>Policy JSON override (opcional)</label>
+          <textarea id="policyJson" rows="5" placeholder='{"blockOn":{"critical":0,"high":0}}'></textarea>
+        </div>
+
+        <pre id="jobOut"></pre>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Ejecuciones recientes</h2>
+          <div class="table-actions">
+            <button id="btnRefreshJobs">Refrescar</button>
+            <input id="jobId" placeholder="job id manual" />
+            <button id="btnLoadJob">Cargar</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Tipo</th>
+                <th>Estado</th>
+                <th>Hallazgos</th>
+                <th>Creado</th>
+                <th>Resumen</th>
+              </tr>
+            </thead>
+            <tbody id="jobsTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Detalle de job</h2>
+          <div class="table-actions">
+            <button id="btnGetJob">Estado</button>
+            <button id="btnGetFindings">Hallazgos</button>
+            <button id="btnGetLogs">Logs</button>
+            <button id="btnPoll">Auto refresh</button>
+            <button id="btnCancel">Cancelar</button>
+          </div>
+        </div>
+        <div class="triple">
+          <pre id="jobStateOut"></pre>
+          <pre id="findingsOut"></pre>
+          <pre id="logsOut"></pre>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
