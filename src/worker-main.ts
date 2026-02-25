@@ -131,45 +131,17 @@ async function processJob(job: JobRow) {
       cpSync(dockerfilePath, join(repoDir, "Dockerfile"), { force: true });
     } else if (inputType === "k8s_manifest_upload") {
       const manifestPath = resolveUploadPath(payload);
+      if (!isYamlPath(manifestPath)) {
+        throw new Error("only .yaml/.yml manifests can be deployed");
+      }
       cpSync(manifestPath, join(repoDir, "manifest.yaml"), { force: true });
     }
 
     if (isCancelRequested(db, jobId)) return markCanceled(jobId, workdir);
 
     const toolSummaries: Record<string, unknown> = {};
-    if (inputType === "docker_image") {
-      const imageRef = String(payload.image ?? "");
-      if (!imageRef) throw new Error("docker_image requires payload.image");
 
-      logLine(db, jobId, "info", `Pulling image ${imageRef}`);
-      const pull = await runHostCommand({ cmd: ["docker", "pull", imageRef], timeoutMs: SCAN_TIMEOUT_MS });
-      if (pull.timedOut || pull.code !== 0) throw new Error(`docker pull failed: ${pull.stderr || pull.stdout}`);
-
-      if (payload.saveTar === true) {
-        const tarPath = join(workdir, "docker-image.tar");
-        const save = await runHostCommand({
-          cmd: ["docker", "save", imageRef, "-o", tarPath],
-          timeoutMs: SCAN_TIMEOUT_MS
-        });
-        if (save.timedOut || save.code !== 0) {
-          throw new Error(`docker save failed: ${save.stderr || save.stdout}`);
-        }
-      }
-
-      const trivy = await runTrivyImage({ imgTrivy: IMG_TRIVY, imageRef, timeoutMs: SCAN_TIMEOUT_MS });
-      const trivySummary = summarizeTrivy(trivy);
-      insertFinding(db, jobId, "trivy", trivySummary, trivy);
-      toolSummaries.trivy = trivySummary;
-
-      const grype = await runGrypeImage({ imgGrype: IMG_GRYPE, imageRef, timeoutMs: SCAN_TIMEOUT_MS });
-      const grypeSummary = summarizeGrype(grype);
-      insertFinding(db, jobId, "grype", grypeSummary, grype);
-      toolSummaries.grype = grypeSummary;
-
-      if (payload.removeImageAfterScan !== false) {
-        await runHostCommand({ cmd: ["docker", "rmi", imageRef], timeoutMs: 120000 });
-      }
-    } else {
+    if (inputType !== "docker_image") {
       logLine(db, jobId, "info", "Running Trivy fs scan");
       const trivy = await runTrivy({ imgTrivy: IMG_TRIVY, jobDir: sourceJobDir, timeoutMs: SCAN_TIMEOUT_MS });
       const trivySummary = summarizeTrivy(trivy);
@@ -189,9 +161,67 @@ async function processJob(job: JobRow) {
       toolSummaries.grype = grypeSummary;
     }
 
+    let imageRefForScan = "";
+    let findingPrefix = "";
+    if (inputType === "docker_image") {
+      imageRefForScan = String(payload.image ?? "");
+      findingPrefix = "";
+      if (!imageRefForScan) throw new Error("docker_image requires payload.image");
+
+      logLine(db, jobId, "info", `Pulling image ${imageRefForScan}`);
+      const pull = await runHostCommand({ cmd: ["docker", "pull", imageRefForScan], timeoutMs: SCAN_TIMEOUT_MS });
+      if (pull.timedOut || pull.code !== 0) throw new Error(`docker pull failed: ${pull.stderr || pull.stdout}`);
+    } else if (inputType === "dockerfile_upload" && String(payload.image ?? "").trim()) {
+      imageRefForScan = String(payload.image).trim();
+      findingPrefix = "image_";
+      logLine(db, jobId, "info", `Building image from Dockerfile as ${imageRefForScan}`);
+      const build = await runHostCommand({
+        cmd: ["docker", "build", "-t", imageRefForScan, repoDir],
+        timeoutMs: SCAN_TIMEOUT_MS
+      });
+      if (build.timedOut || build.code !== 0) {
+        throw new Error(`docker build failed: ${build.stderr || build.stdout}`);
+      }
+    }
+
+    if (imageRefForScan) {
+      if (payload.saveTar === true) {
+        const tarPath = join(workdir, "docker-image.tar");
+        const save = await runHostCommand({
+          cmd: ["docker", "save", imageRefForScan, "-o", tarPath],
+          timeoutMs: SCAN_TIMEOUT_MS
+        });
+        if (save.timedOut || save.code !== 0) {
+          throw new Error(`docker save failed: ${save.stderr || save.stdout}`);
+        }
+      }
+
+      const trivyImage = await runTrivyImage({
+        imgTrivy: IMG_TRIVY,
+        imageRef: imageRefForScan,
+        timeoutMs: SCAN_TIMEOUT_MS
+      });
+      const trivyImageSummary = summarizeTrivy(trivyImage);
+      insertFinding(db, jobId, `${findingPrefix}trivy`, trivyImageSummary, trivyImage);
+      toolSummaries[`${findingPrefix}trivy`] = trivyImageSummary;
+
+      const grypeImage = await runGrypeImage({
+        imgGrype: IMG_GRYPE,
+        imageRef: imageRefForScan,
+        timeoutMs: SCAN_TIMEOUT_MS
+      });
+      const grypeImageSummary = summarizeGrype(grypeImage);
+      insertFinding(db, jobId, `${findingPrefix}grype`, grypeImageSummary, grypeImage);
+      toolSummaries[`${findingPrefix}grype`] = grypeImageSummary;
+
+      if (payload.removeImageAfterScan !== false) {
+        await runHostCommand({ cmd: ["docker", "rmi", imageRefForScan], timeoutMs: 120000 });
+      }
+    }
+
     if (isCancelRequested(db, jobId)) return markCanceled(jobId, workdir);
 
-    const gate = await runDeployGateIfNeeded(db, jobId, workdir, payload, policy, toolSummaries);
+    const gate = await runDeployGateIfNeeded(db, jobId, workdir, inputType, payload, policy, toolSummaries);
     const summary = { toolSummaries, deployGate: gate };
 
     setJobStatus(db, jobId, "succeeded", {
@@ -214,10 +244,15 @@ async function runDeployGateIfNeeded(
   dbConn: Database,
   jobId: string,
   workdir: string,
+  inputType: string,
   payload: any,
   policy: any,
   toolSummaries: Record<string, unknown>
 ) {
+  if (inputType !== "k8s_manifest_upload") {
+    return { enabled: false, reason: "not_manifest_job" };
+  }
+
   const enabled = Boolean(policy?.deployGate?.enabled);
   if (!enabled) return { enabled: false };
 
@@ -233,6 +268,9 @@ async function runDeployGateIfNeeded(
     logLine(dbConn, jobId, "warn", "Deploy gate enabled without manifest, skipping deployment");
     setJobStatus(dbConn, jobId, "succeeded", { deploy_status: "skipped_no_manifest", nuclei_status: "skipped" });
     return { enabled: true, deployed: false, reason: "missing_manifest" };
+  }
+  if (!isYamlPath(manifestPath)) {
+    throw new Error("deploy gate requires a YAML manifest (.yaml/.yml)");
   }
 
   logLine(dbConn, jobId, "info", `Deploying manifest ${manifestPath}`);
@@ -290,12 +328,20 @@ async function runNuclei(targetUrl: string, workdir: string) {
 }
 
 function resolveManifestPath(payload: any, policy: any): string | null {
-  if (typeof policy?.deployGate?.manifestPath === "string" && policy.deployGate.manifestPath) {
-    return resolve(policy.deployGate.manifestPath);
+  if (typeof payload?.uploadId === "string" && payload.uploadId) {
+    const row = db.prepare(`SELECT stored_path FROM uploads WHERE id = ?`).get(payload.uploadId) as
+      | { stored_path?: string }
+      | undefined;
+    if (row?.stored_path) return resolve(row.stored_path);
   }
   if (typeof payload?.manifestUploadId === "string" && payload.manifestUploadId) {
-    const row = db.prepare(`SELECT stored_path FROM uploads WHERE id = ?`).get(payload.manifestUploadId) as { stored_path?: string } | undefined;
+    const row = db.prepare(`SELECT stored_path FROM uploads WHERE id = ?`).get(payload.manifestUploadId) as
+      | { stored_path?: string }
+      | undefined;
     if (row?.stored_path) return resolve(row.stored_path);
+  }
+  if (typeof policy?.deployGate?.manifestPath === "string" && policy.deployGate.manifestPath) {
+    return resolve(policy.deployGate.manifestPath);
   }
   return null;
 }
@@ -330,6 +376,11 @@ async function extractArchive(archivePath: string, destinationDir: string) {
 
 function escapePs(input: string) {
   return input.replace(/'/g, "''");
+}
+
+function isYamlPath(inputPath: string) {
+  const p = String(inputPath || "").toLowerCase();
+  return p.endsWith(".yaml") || p.endsWith(".yml");
 }
 
 function isCancelRequested(dbConn: Database, jobId: string) {

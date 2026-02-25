@@ -22,7 +22,9 @@ Stack implementado:
 - `GET /jobs/:id`
 - `GET /jobs/:id/logs?after=0`
 - `GET /jobs/:id/findings`
+- `GET /jobs/:id/findings/:findingId`
 - `POST /jobs/:id/cancel`
+- `DELETE /jobs/:id`
 
 ## Ejemplos
 

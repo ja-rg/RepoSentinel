@@ -35,6 +35,16 @@ const app = new Hono();
 const STARTED_AT_MS = Date.now();
 let preflightCache: { deep: boolean; atMs: number; data: unknown } | null = null;
 
+type UploadRow = {
+  id: string;
+  job_id: string | null;
+  kind: string;
+  original_name: string;
+  mime_type: string | null;
+  stored_path: string;
+  created_at: string;
+};
+
 app.get("/health", (c) => c.json({ ok: true, service: "reposentinel-api" }));
 
 app.get("/system/status", (c) => {
@@ -220,9 +230,22 @@ app.post("/jobs", async (c) => {
   if (!inputType) return c.json({ error: "invalid inputType" }, 400);
 
   const payload = body?.payload ?? {};
-  const policy = body?.policy ?? {};
+  let policy: any;
+  try {
+    policy = normalizePolicyForInput(inputType, body?.policy ?? {});
+  } catch (error: any) {
+    return c.json({ error: String(error?.message ?? error) }, 400);
+  }
   const validation = validatePayload(inputType, payload);
   if (!validation.ok) return c.json({ error: validation.reason }, 400);
+
+  if (inputType === "k8s_manifest_upload") {
+    const upload = getUploadById(String(payload.uploadId ?? ""));
+    if (!upload) return c.json({ error: "manifest upload not found" }, 400);
+    if (!isYamlUpload(upload.original_name, upload.mime_type)) {
+      return c.json({ error: "only .yaml/.yml files are deployable" }, 400);
+    }
+  }
 
   const jobId = genId();
   const workdir = join(WORK_ROOT, jobId);
@@ -231,9 +254,6 @@ app.post("/jobs", async (c) => {
 
   if (typeof payload?.uploadId === "string" && payload.uploadId) {
     attachUploadToJob(db, payload.uploadId, jobId);
-  }
-  if (typeof payload?.manifestUploadId === "string" && payload.manifestUploadId) {
-    attachUploadToJob(db, payload.manifestUploadId, jobId);
   }
 
   return c.json({ jobId, status: "queued" }, 202);
@@ -304,10 +324,18 @@ app.get("/jobs/:id", (c) => {
 
 app.get("/jobs/:id/findings", (c) => {
   const id = c.req.param("id");
+  const includeRaw = c.req.query("includeRaw") === "1";
   const rows = db.prepare(`
-    SELECT id, tool, severity, created_at, summary_json
+    SELECT id, tool, severity, created_at, summary_json, raw_json
     FROM findings WHERE job_id = ? ORDER BY id ASC
-  `).all(id) as Array<{ id: number; tool: string; severity: string | null; created_at: string; summary_json: string }>;
+  `).all(id) as Array<{
+    id: number;
+    tool: string;
+    severity: string | null;
+    created_at: string;
+    summary_json: string;
+    raw_json: string;
+  }>;
 
   return c.json({
     jobId: id,
@@ -316,8 +344,42 @@ app.get("/jobs/:id/findings", (c) => {
       tool: r.tool,
       severity: r.severity,
       createdAt: r.created_at,
-      summary: safeJsonParse(r.summary_json)
+      summary: safeJsonParse(r.summary_json),
+      rawPreview: summarizeRawFinding(r.raw_json),
+      raw: includeRaw ? safeJsonParse(r.raw_json) : undefined
     }))
+  });
+});
+
+app.get("/jobs/:id/findings/:findingId", (c) => {
+  const jobId = c.req.param("id");
+  const findingId = Number(c.req.param("findingId"));
+  if (!Number.isFinite(findingId)) return c.json({ error: "invalid finding id" }, 400);
+
+  const row = db.prepare(`
+    SELECT id, tool, severity, created_at, summary_json, raw_json
+    FROM findings
+    WHERE id = ? AND job_id = ?
+  `).get(findingId, jobId) as
+    | {
+        id: number;
+        tool: string;
+        severity: string | null;
+        created_at: string;
+        summary_json: string;
+        raw_json: string;
+      }
+    | undefined;
+
+  if (!row) return c.json({ error: "finding not found" }, 404);
+  return c.json({
+    id: row.id,
+    jobId,
+    tool: row.tool,
+    severity: row.severity,
+    createdAt: row.created_at,
+    summary: safeJsonParse(row.summary_json),
+    raw: safeJsonParse(row.raw_json)
   });
 });
 
@@ -362,6 +424,40 @@ app.post("/jobs/:id/cancel", (c) => {
   return c.json({ jobId: id, cancelRequested: true });
 });
 
+app.delete("/jobs/:id", (c) => {
+  if (!hasAuth(c.req.raw)) return c.text("Unauthorized", 401);
+
+  const jobId = c.req.param("id");
+  const job = db.prepare(`SELECT id, workdir FROM jobs WHERE id = ?`).get(jobId) as
+    | { id: string; workdir: string | null }
+    | undefined;
+  if (!job) return c.json({ error: "not found" }, 404);
+
+  const uploads = db.prepare(`SELECT id, stored_path FROM uploads WHERE job_id = ?`).all(jobId) as Array<{
+    id: string;
+    stored_path: string;
+  }>;
+
+  const tx = db.transaction(() => {
+    db.prepare(`DELETE FROM uploads WHERE job_id = ?`).run(jobId);
+    db.prepare(`DELETE FROM jobs WHERE id = ?`).run(jobId);
+  });
+  tx();
+
+  for (const upload of uploads) {
+    rmSync(upload.stored_path, { recursive: true, force: true });
+  }
+  if (job.workdir) {
+    rmSync(job.workdir, { recursive: true, force: true });
+  }
+
+  return c.json({
+    deleted: true,
+    jobId,
+    uploadsDeleted: uploads.length
+  });
+});
+
 Bun.serve({ port: PORT, fetch: app.fetch });
 console.log(`API listening on http://localhost:${PORT}`);
 
@@ -402,6 +498,9 @@ function validatePayload(inputType: InputType, payload: any): { ok: true } | { o
   }
   if (inputType === "docker_image" && !String(payload?.image ?? "")) {
     return { ok: false, reason: "payload.image is required" };
+  }
+  if (inputType !== "k8s_manifest_upload" && payload?.manifestUploadId) {
+    return { ok: false, reason: "deploy gate is only supported for k8s_manifest_upload jobs" };
   }
   return { ok: true };
 }
@@ -470,8 +569,52 @@ function summarizeInput(inputType: string, payloadRaw: string) {
   }
   if (inputType === "workspace_path") return String(payload.path ?? "");
   if (inputType === "docker_image") return String(payload.image ?? "");
+  if (inputType === "k8s_manifest_upload") return `manifest:${String(payload.uploadId ?? "")}`;
   if (inputType === "archive_upload" || inputType === "dockerfile_upload" || inputType === "k8s_manifest_upload") {
     return String(payload.uploadId ?? payload.uploadPath ?? "");
   }
   return inputType;
+}
+
+function getUploadById(uploadId: string) {
+  if (!uploadId) return null;
+  const row = db.prepare(`
+    SELECT id, job_id, kind, original_name, mime_type, stored_path, created_at
+    FROM uploads
+    WHERE id = ?
+  `).get(uploadId) as UploadRow | undefined;
+  return row ?? null;
+}
+
+function isYamlUpload(fileName: string, mimeType: string | null) {
+  const lower = String(fileName || "").toLowerCase();
+  const mime = String(mimeType || "").toLowerCase();
+  return (
+    lower.endsWith(".yaml") ||
+    lower.endsWith(".yml") ||
+    mime.includes("yaml") ||
+    mime.includes("x-yaml")
+  );
+}
+
+function normalizePolicyForInput(inputType: InputType, policyRaw: any) {
+  const policy = policyRaw && typeof policyRaw === "object" ? policyRaw : {};
+  const deployGateEnabled = Boolean(policy?.deployGate?.enabled);
+  if (deployGateEnabled && inputType !== "k8s_manifest_upload") {
+    throw new Error("deploy gate is only supported for k8s_manifest_upload jobs");
+  }
+  if (inputType !== "k8s_manifest_upload") {
+    const { deployGate: _, ...rest } = policy;
+    return rest;
+  }
+  return policy;
+}
+
+function summarizeRawFinding(rawJson: string) {
+  const parsed = safeJsonParse(rawJson);
+  const type = Array.isArray(parsed) ? "array" : typeof parsed;
+  return {
+    type,
+    bytes: rawJson.length
+  };
 }

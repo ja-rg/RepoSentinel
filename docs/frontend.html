@@ -8,11 +8,12 @@
   </head>
   <body>
     <div class="bg-glow"></div>
+
     <main class="layout">
       <header class="hero">
         <div>
           <h1>RepoSentinel</h1>
-          <p>Panel operativo de escaneo y observabilidad</p>
+          <p>Centro de control de escaneo, runners y despliegue seguro de manifests YAML</p>
         </div>
         <div class="hero-actions">
           <input id="token" placeholder="Bearer token (opcional)" />
@@ -33,106 +34,139 @@
         <div class="status-actions">
           <button id="btnQuickCheck">Preflight rapido</button>
           <button id="btnDeepCheck">Preflight profundo</button>
-          <small id="preflightHint">El modo profundo valida contenedores de Trivy/Semgrep/Grype.</small>
+          <small>Profundo valida Trivy, Semgrep y Grype en contenedor.</small>
         </div>
         <div id="preflightChecks" class="checks"></div>
       </section>
 
       <section class="card">
-        <h2>Crear analisis</h2>
+        <h2>Nuevo analisis</h2>
 
-        <div class="tabs" id="jobTabs">
-          <button class="tab is-active" data-tab="repo">Repo / Workspace</button>
-          <button class="tab" data-tab="archive">Archive</button>
-          <button class="tab" data-tab="docker-image">Docker Image</button>
-          <button class="tab" data-tab="dockerfile">Dockerfile</button>
-          <button class="tab" data-tab="manifest">Manifest</button>
+        <div class="tabs" id="mainTabs">
+          <button class="tab is-active" data-tab="source">Source</button>
+          <button class="tab" data-tab="docker">Docker</button>
+          <button class="tab" data-tab="manifest">Manifest YAML</button>
         </div>
 
-        <div class="tab-panels">
-          <div class="panel is-active" data-panel="repo">
+        <div class="panel is-active" data-panel="source">
+          <div class="inline-controls">
+            <label>Modo source</label>
+            <select id="sourceMode">
+              <option value="git_url">Git URL</option>
+              <option value="workspace_path">Workspace path</option>
+              <option value="archive_upload">Archive</option>
+            </select>
+          </div>
+
+          <div class="mode-group is-active" data-source-mode="git_url">
             <div class="grid two">
-              <label>Modo</label>
-              <select id="repoMode">
-                <option value="git_url">Git URL</option>
-                <option value="workspace_path">Workspace path</option>
-              </select>
               <label>Repo URL</label>
               <input id="repoUrl" placeholder="https://github.com/owner/repo" />
               <label>Ref</label>
               <input id="repoRef" placeholder="main (opcional)" />
+            </div>
+          </div>
+
+          <div class="mode-group" data-source-mode="workspace_path">
+            <div class="grid two">
               <label>Workspace path</label>
               <input id="workspacePath" placeholder="C:/ruta/absoluta/proyecto" />
             </div>
-            <button data-create="repo">Crear job</button>
           </div>
 
-          <div class="panel" data-panel="archive">
+          <div class="mode-group" data-source-mode="archive_upload">
             <div class="upload-line">
               <input id="archiveFile" type="file" />
-              <button data-upload="archive">Subir archive</button>
+              <button id="btnUploadArchive">Subir archive</button>
               <input id="archiveUploadId" placeholder="upload id" />
             </div>
-            <button data-create="archive">Crear job</button>
           </div>
 
-          <div class="panel" data-panel="docker-image">
+          <button id="btnCreateSource">Crear analisis source</button>
+        </div>
+
+        <div class="panel" data-panel="docker">
+          <div class="inline-controls">
+            <label>Modo docker</label>
+            <select id="dockerMode">
+              <option value="docker_image">Por imagen</option>
+              <option value="dockerfile_upload">Por Dockerfile</option>
+            </select>
+          </div>
+
+          <div class="mode-group is-active" data-docker-mode="docker_image">
             <div class="grid two">
               <label>Imagen</label>
               <input id="dockerImage" placeholder="nginx:latest" />
-              <label>
-                <input id="dockerSaveTar" type="checkbox" checked />
-                Guardar tar temporal
-              </label>
-              <label>
-                <input id="dockerRemoveAfter" type="checkbox" checked />
-                Eliminar imagen local al finalizar
-              </label>
             </div>
-            <button data-create="docker-image">Crear job</button>
           </div>
 
-          <div class="panel" data-panel="dockerfile">
+          <div class="mode-group" data-docker-mode="dockerfile_upload">
             <div class="upload-line">
               <input id="dockerfileFile" type="file" />
-              <button data-upload="dockerfile">Subir Dockerfile</button>
+              <button id="btnUploadDockerfile">Subir Dockerfile</button>
               <input id="dockerfileUploadId" placeholder="upload id" />
             </div>
-            <button data-create="dockerfile">Crear job</button>
+            <div class="grid two">
+              <label>Tag imagen (opcional)</label>
+              <input id="dockerfileImageTag" placeholder="miapp:scan" />
+            </div>
           </div>
 
-          <div class="panel" data-panel="manifest">
-            <div class="upload-line">
-              <input id="manifestFile" type="file" />
-              <button data-upload="k8s">Subir manifiesto</button>
-              <input id="manifestUploadId" placeholder="upload id" />
-            </div>
-            <button data-create="manifest">Crear job</button>
+          <div class="grid two compact-grid">
+            <label>
+              <input id="dockerSaveTar" type="checkbox" checked />
+              Guardar tar temporal
+            </label>
+            <label>
+              <input id="dockerRemoveAfter" type="checkbox" checked />
+              Eliminar imagen local al finalizar
+            </label>
           </div>
+
+          <button id="btnCreateDocker">Crear analisis docker</button>
         </div>
 
-        <div class="gate-box">
-          <h3>Policy / Deploy Gate (opcional)</h3>
-          <div class="grid two">
-            <label>
-              <input id="deployGateEnabled" type="checkbox" />
-              Activar deploy gate
-            </label>
-            <label>Target URL Nuclei
-              <input id="targetUrl" placeholder="http://app.example.com" />
-            </label>
+        <div class="panel" data-panel="manifest">
+          <div class="callout">
+            Solo manifests YAML (.yaml/.yml) pueden usar deploy gate y despliegue.
+          </div>
+          <div class="upload-line">
+            <input id="manifestFile" type="file" accept=".yaml,.yml,text/yaml,application/x-yaml" />
+            <button id="btnUploadManifest">Subir manifest YAML</button>
+            <input id="manifestUploadId" placeholder="upload id" />
+          </div>
+
+          <h3>Reglas de bloqueo</h3>
+          <div class="grid two compact-grid">
             <label>Critical max
-              <input id="policyCritical" type="number" value="0" min="0" />
+              <input id="policyCritical" type="number" min="0" value="0" />
             </label>
             <label>High max
-              <input id="policyHigh" type="number" value="0" min="0" />
+              <input id="policyHigh" type="number" min="0" value="0" />
             </label>
           </div>
-          <label>Policy JSON override (opcional)</label>
-          <textarea id="policyJson" rows="5" placeholder='{"blockOn":{"critical":0,"high":0}}'></textarea>
+
+          <h3>Deploy gate</h3>
+          <div class="grid two compact-grid">
+            <label>
+              <input id="deployGateEnabled" type="checkbox" checked />
+              Activar deploy gate
+            </label>
+            <label>Target URL para Nuclei
+              <input id="targetUrl" placeholder="http://app.example.com" />
+            </label>
+          </div>
+
+          <details>
+            <summary>Policy JSON avanzado (opcional)</summary>
+            <textarea id="policyJson" rows="5" placeholder='{"blockOn":{"critical":0,"high":0},"deployGate":{"enabled":true}}'></textarea>
+          </details>
+
+          <button id="btnCreateManifest">Crear analisis manifest</button>
         </div>
 
-        <pre id="jobOut"></pre>
+        <pre id="createOut"></pre>
       </section>
 
       <section class="card">
@@ -144,6 +178,7 @@
             <button id="btnLoadJob">Cargar</button>
           </div>
         </div>
+
         <div class="table-wrap">
           <table>
             <thead>
@@ -153,7 +188,7 @@
                 <th>Estado</th>
                 <th>Hallazgos</th>
                 <th>Creado</th>
-                <th>Resumen</th>
+                <th>Input</th>
               </tr>
             </thead>
             <tbody id="jobsTableBody"></tbody>
@@ -163,19 +198,31 @@
 
       <section class="card">
         <div class="card-head">
-          <h2>Detalle de job</h2>
+          <h2>Detalle de ejecucion</h2>
           <div class="table-actions">
             <button id="btnGetJob">Estado</button>
             <button id="btnGetFindings">Hallazgos</button>
             <button id="btnGetLogs">Logs</button>
             <button id="btnPoll">Auto refresh</button>
             <button id="btnCancel">Cancelar</button>
+            <button id="btnDeleteJob" class="danger">Eliminar job</button>
           </div>
         </div>
-        <div class="triple">
-          <pre id="jobStateOut"></pre>
-          <pre id="findingsOut"></pre>
-          <pre id="logsOut"></pre>
+
+        <div id="jobMeta" class="meta-grid"></div>
+
+        <div class="detail-grid">
+          <section class="pane">
+            <h3>Hallazgos</h3>
+            <div id="findingsList" class="findings-list"></div>
+          </section>
+
+          <section class="pane">
+            <h3>Timeline de ejecucion</h3>
+            <ol id="timeline" class="timeline"></ol>
+            <h3>Logs en vivo</h3>
+            <pre id="logsOut"></pre>
+          </section>
         </div>
       </section>
     </main>
