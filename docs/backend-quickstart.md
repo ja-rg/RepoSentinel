@@ -6,6 +6,9 @@ Stack implementado:
 - Worker polling (`bun run worker.ts`)
 - Ejecucion de herramientas por Docker (`docker run --rm ...`)
 
+Nota:
+- El deploy gate solo aplica a jobs de tipo `k8s_manifest_upload` con archivos `.yaml/.yml`.
+
 ## Ejecutar
 1. `bun install`
 2. `bun run api`

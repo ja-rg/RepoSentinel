@@ -5,25 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RepoSentinel Control Panel</title>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    />
   </head>
   <body>
     <div class="bg-glow"></div>
 
     <main class="layout">
       <header class="hero">
-        <div>
-          <h1>RepoSentinel</h1>
+        <div class="hero-copy">
+          <h1>
+            <i class="bi bi-shield-lock-fill" aria-hidden="true"></i>
+            <span>RepoSentinel</span>
+          </h1>
           <p>Centro de control de escaneo, runners y despliegue seguro de manifests YAML</p>
         </div>
         <div class="hero-actions">
           <input id="token" placeholder="Bearer token (opcional)" />
-          <button id="btnRefreshStatus">Actualizar estado</button>
+          <button id="btnRefreshStatus">
+            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+            <span>Actualizar estado</span>
+          </button>
         </div>
       </header>
 
       <section class="card">
         <div class="card-head">
-          <h2>Estado del sistema</h2>
+          <h2 class="section-title">
+            <i class="bi bi-heart-pulse-fill" aria-hidden="true"></i>
+            <span>Estado del sistema</span>
+          </h2>
           <div class="status-row">
             <span id="badgeApi" class="badge neutral">API: verificando</span>
             <span id="badgeDocker" class="badge neutral">Docker: verificando</span>
@@ -32,20 +46,41 @@
           </div>
         </div>
         <div class="status-actions">
-          <button id="btnQuickCheck">Preflight rapido</button>
-          <button id="btnDeepCheck">Preflight profundo</button>
-          <small>Profundo valida Trivy, Semgrep y Grype en contenedor.</small>
+          <button id="btnQuickCheck">
+            <i class="bi bi-lightning-charge-fill" aria-hidden="true"></i>
+            <span>Preflight rapido</span>
+          </button>
+          <button id="btnDeepCheck">
+            <i class="bi bi-binoculars-fill" aria-hidden="true"></i>
+            <span>Preflight profundo</span>
+          </button>
+          <small>
+            <i class="bi bi-info-circle-fill" aria-hidden="true"></i>
+            Profundo valida Trivy, Semgrep y Grype en contenedor.
+          </small>
         </div>
         <div id="preflightChecks" class="checks"></div>
       </section>
 
       <section class="card">
-        <h2>Nuevo analisis</h2>
+        <h2 class="section-title">
+          <i class="bi bi-plus-square-fill" aria-hidden="true"></i>
+          <span>Nuevo analisis</span>
+        </h2>
 
         <div class="tabs" id="mainTabs">
-          <button class="tab is-active" data-tab="source">Source</button>
-          <button class="tab" data-tab="docker">Docker</button>
-          <button class="tab" data-tab="manifest">Manifest YAML</button>
+          <button class="tab is-active" data-tab="source">
+            <i class="bi bi-folder2-open" aria-hidden="true"></i>
+            <span>Source</span>
+          </button>
+          <button class="tab" data-tab="docker">
+            <i class="bi bi-box-seam" aria-hidden="true"></i>
+            <span>Docker</span>
+          </button>
+          <button class="tab" data-tab="manifest">
+            <i class="bi bi-file-earmark-code" aria-hidden="true"></i>
+            <span>Manifest YAML</span>
+          </button>
         </div>
 
         <div class="panel is-active" data-panel="source">
@@ -77,12 +112,18 @@
           <div class="mode-group" data-source-mode="archive_upload">
             <div class="upload-line">
               <input id="archiveFile" type="file" />
-              <button id="btnUploadArchive">Subir archive</button>
+              <button id="btnUploadArchive">
+                <i class="bi bi-upload" aria-hidden="true"></i>
+                <span>Subir archive</span>
+              </button>
               <input id="archiveUploadId" placeholder="upload id" />
             </div>
           </div>
 
-          <button id="btnCreateSource">Crear analisis source</button>
+          <button id="btnCreateSource">
+            <i class="bi bi-play-circle-fill" aria-hidden="true"></i>
+            <span>Crear analisis source</span>
+          </button>
         </div>
 
         <div class="panel" data-panel="docker">
@@ -104,7 +145,10 @@
           <div class="mode-group" data-docker-mode="dockerfile_upload">
             <div class="upload-line">
               <input id="dockerfileFile" type="file" />
-              <button id="btnUploadDockerfile">Subir Dockerfile</button>
+              <button id="btnUploadDockerfile">
+                <i class="bi bi-upload" aria-hidden="true"></i>
+                <span>Subir Dockerfile</span>
+              </button>
               <input id="dockerfileUploadId" placeholder="upload id" />
             </div>
             <div class="grid two">
@@ -124,16 +168,23 @@
             </label>
           </div>
 
-          <button id="btnCreateDocker">Crear analisis docker</button>
+          <button id="btnCreateDocker">
+            <i class="bi bi-play-circle-fill" aria-hidden="true"></i>
+            <span>Crear analisis docker</span>
+          </button>
         </div>
 
         <div class="panel" data-panel="manifest">
           <div class="callout">
+            <i class="bi bi-shield-exclamation" aria-hidden="true"></i>
             Solo manifests YAML (.yaml/.yml) pueden usar deploy gate y despliegue.
           </div>
           <div class="upload-line">
             <input id="manifestFile" type="file" accept=".yaml,.yml,text/yaml,application/x-yaml" />
-            <button id="btnUploadManifest">Subir manifest YAML</button>
+            <button id="btnUploadManifest">
+              <i class="bi bi-upload" aria-hidden="true"></i>
+              <span>Subir manifest YAML</span>
+            </button>
             <input id="manifestUploadId" placeholder="upload id" />
           </div>
 
@@ -163,7 +214,10 @@
             <textarea id="policyJson" rows="5" placeholder='{"blockOn":{"critical":0,"high":0},"deployGate":{"enabled":true}}'></textarea>
           </details>
 
-          <button id="btnCreateManifest">Crear analisis manifest</button>
+          <button id="btnCreateManifest">
+            <i class="bi bi-play-circle-fill" aria-hidden="true"></i>
+            <span>Crear analisis manifest</span>
+          </button>
         </div>
 
         <pre id="createOut"></pre>
@@ -171,11 +225,20 @@
 
       <section class="card">
         <div class="card-head">
-          <h2>Ejecuciones recientes</h2>
+          <h2 class="section-title">
+            <i class="bi bi-clock-history" aria-hidden="true"></i>
+            <span>Ejecuciones recientes</span>
+          </h2>
           <div class="table-actions">
-            <button id="btnRefreshJobs">Refrescar</button>
+            <button id="btnRefreshJobs">
+              <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+              <span>Refrescar</span>
+            </button>
             <input id="jobId" placeholder="job id manual" />
-            <button id="btnLoadJob">Cargar</button>
+            <button id="btnLoadJob">
+              <i class="bi bi-search" aria-hidden="true"></i>
+              <span>Cargar</span>
+            </button>
           </div>
         </div>
 
@@ -198,14 +261,35 @@
 
       <section class="card">
         <div class="card-head">
-          <h2>Detalle de ejecucion</h2>
+          <h2 class="section-title">
+            <i class="bi bi-activity" aria-hidden="true"></i>
+            <span>Detalle de ejecucion</span>
+          </h2>
           <div class="table-actions">
-            <button id="btnGetJob">Estado</button>
-            <button id="btnGetFindings">Hallazgos</button>
-            <button id="btnGetLogs">Logs</button>
-            <button id="btnPoll">Auto refresh</button>
-            <button id="btnCancel">Cancelar</button>
-            <button id="btnDeleteJob" class="danger">Eliminar job</button>
+            <button id="btnGetJob">
+              <i class="bi bi-clipboard2-pulse" aria-hidden="true"></i>
+              <span>Estado</span>
+            </button>
+            <button id="btnGetFindings">
+              <i class="bi bi-bug-fill" aria-hidden="true"></i>
+              <span>Hallazgos</span>
+            </button>
+            <button id="btnGetLogs">
+              <i class="bi bi-terminal-fill" aria-hidden="true"></i>
+              <span>Logs</span>
+            </button>
+            <button id="btnPoll">
+              <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+              <span>Auto refresh</span>
+            </button>
+            <button id="btnCancel">
+              <i class="bi bi-pause-circle-fill" aria-hidden="true"></i>
+              <span>Cancelar</span>
+            </button>
+            <button id="btnDeleteJob" class="danger">
+              <i class="bi bi-trash3-fill" aria-hidden="true"></i>
+              <span>Eliminar job</span>
+            </button>
           </div>
         </div>
 
@@ -213,15 +297,24 @@
 
         <div class="detail-grid">
           <section class="pane">
-            <h3>Hallazgos</h3>
+            <h3 class="section-title">
+              <i class="bi bi-bug-fill" aria-hidden="true"></i>
+              <span>Hallazgos</span>
+            </h3>
             <div id="findingsList" class="findings-list"></div>
           </section>
 
           <section class="pane">
-            <h3>Timeline de ejecucion</h3>
+            <h3 class="section-title">
+              <i class="bi bi-diagram-3-fill" aria-hidden="true"></i>
+              <span>Timeline de ejecucion</span>
+            </h3>
             <ol id="timeline" class="timeline"></ol>
-            <h3>Logs en vivo</h3>
-            <pre id="logsOut"></pre>
+            <h3 class="section-title logs-title">
+              <i class="bi bi-terminal-fill" aria-hidden="true"></i>
+              <span>Logs en vivo</span>
+            </h3>
+            <pre id="logsOut" class="max-w-full overflow-auto"></pre>
           </section>
         </div>
       </section>

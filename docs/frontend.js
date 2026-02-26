@@ -74,6 +74,14 @@ const state = {
   logs: []
 };
 
+const BADGE_ICON_BY_KIND = {
+  ok: "check-circle-fill",
+  info: "info-circle-fill",
+  warn: "exclamation-triangle-fill",
+  error: "x-octagon-fill",
+  neutral: "dash-circle-fill"
+};
+
 bindEvents();
 init().catch((error) => {
   print(els.createOut, { error: toErrorText(error) });
@@ -106,31 +114,31 @@ async function init() {
 }
 
 function bindEvents() {
-  els.btnRefreshStatus.addEventListener("click", () => refreshSystemStatus());
-  els.btnQuickCheck.addEventListener("click", () => runPreflight(false, true));
-  els.btnDeepCheck.addEventListener("click", () => runPreflight(true, true));
+  els.btnRefreshStatus.addEventListener("click", () => refreshSystemStatus().catch(reportError));
+  els.btnQuickCheck.addEventListener("click", () => runPreflight(false, true).catch(reportError));
+  els.btnDeepCheck.addEventListener("click", () => runPreflight(true, true).catch(reportError));
 
   els.mainTabs.addEventListener("click", onMainTabClick);
   els.sourceMode.addEventListener("change", syncSourceMode);
   els.dockerMode.addEventListener("change", syncDockerMode);
 
-  els.btnUploadArchive.addEventListener("click", () => uploadFile("archive", els.archiveFile, els.archiveUploadId));
-  els.btnUploadDockerfile.addEventListener("click", () => uploadFile("dockerfile", els.dockerfileFile, els.dockerfileUploadId));
-  els.btnUploadManifest.addEventListener("click", () => uploadFile("k8s", els.manifestFile, els.manifestUploadId));
+  els.btnUploadArchive.addEventListener("click", () => uploadFile("archive", els.archiveFile, els.archiveUploadId).catch(reportError));
+  els.btnUploadDockerfile.addEventListener("click", () => uploadFile("dockerfile", els.dockerfileFile, els.dockerfileUploadId).catch(reportError));
+  els.btnUploadManifest.addEventListener("click", () => uploadFile("k8s", els.manifestFile, els.manifestUploadId).catch(reportError));
 
-  els.btnCreateSource.addEventListener("click", createSourceJob);
-  els.btnCreateDocker.addEventListener("click", createDockerJob);
-  els.btnCreateManifest.addEventListener("click", createManifestJob);
+  els.btnCreateSource.addEventListener("click", () => createSourceJob().catch(reportError));
+  els.btnCreateDocker.addEventListener("click", () => createDockerJob().catch(reportError));
+  els.btnCreateManifest.addEventListener("click", () => createManifestJob().catch(reportError));
 
-  els.btnRefreshJobs.addEventListener("click", () => refreshJobs(true));
-  els.btnLoadJob.addEventListener("click", () => loadSelectedJob(true));
+  els.btnRefreshJobs.addEventListener("click", () => refreshJobs(true).catch(reportError));
+  els.btnLoadJob.addEventListener("click", () => loadSelectedJob(true).catch(reportError));
 
-  els.btnGetJob.addEventListener("click", () => getJobState());
-  els.btnGetFindings.addEventListener("click", () => getFindings());
-  els.btnGetLogs.addEventListener("click", () => getLogs(true));
+  els.btnGetJob.addEventListener("click", () => getJobState().catch(reportError));
+  els.btnGetFindings.addEventListener("click", () => getFindings().catch(reportError));
+  els.btnGetLogs.addEventListener("click", () => getLogs(true).catch(reportError));
   els.btnPoll.addEventListener("click", toggleAutoRefresh);
-  els.btnCancel.addEventListener("click", () => cancelJob());
-  els.btnDeleteJob.addEventListener("click", () => deleteJob());
+  els.btnCancel.addEventListener("click", () => cancelJob().catch(reportError));
+  els.btnDeleteJob.addEventListener("click", () => deleteJob().catch(reportError));
 }
 
 function onMainTabClick(event) {
@@ -237,7 +245,9 @@ function renderChecks(checks) {
   for (const check of checks) {
     const row = document.createElement("div");
     row.className = `check ${check.ok ? "ok" : "error"}`;
-    row.textContent = `${check.ok ? "OK" : "FAIL"} ${check.name}: ${check.detail}`;
+    const tag = check.ok ? "OK" : "FAIL";
+    const icon = check.ok ? "check-circle-fill" : "x-octagon-fill";
+    row.innerHTML = `<i class="bi bi-${icon}" aria-hidden="true"></i><span>${escapeHtml(tag)} ${escapeHtml(String(check.name ?? "check"))}: ${escapeHtml(String(check.detail ?? ""))}</span>`;
     els.preflightChecks.appendChild(row);
   }
 }
@@ -274,63 +284,75 @@ async function uploadFile(kind, fileInput, targetInput) {
 }
 
 async function createSourceJob() {
-  const pre = await runPreflight(false, true);
-  if (!pre.ok) {
-    print(els.createOut, { error: "Preflight fallo", checks: pre.checks });
-    return;
-  }
+  try {
+    const pre = await runPreflight(false, true);
+    if (!pre.ok) {
+      print(els.createOut, { error: "Preflight fallo", checks: pre.checks });
+      return;
+    }
 
-  const mode = els.sourceMode.value;
-  let payload = {};
-  if (mode === "git_url") {
-    payload = {
-      repoUrl: els.repoUrl.value.trim(),
-      ref: els.repoRef.value.trim() || undefined
-    };
-  } else if (mode === "workspace_path") {
-    payload = { path: els.workspacePath.value.trim() };
-  } else {
-    payload = { uploadId: els.archiveUploadId.value.trim() };
-  }
+    const mode = els.sourceMode.value;
+    let payload = {};
+    if (mode === "git_url") {
+      payload = {
+        repoUrl: els.repoUrl.value.trim(),
+        ref: els.repoRef.value.trim() || undefined
+      };
+    } else if (mode === "workspace_path") {
+      payload = { path: els.workspacePath.value.trim() };
+    } else {
+      payload = { uploadId: els.archiveUploadId.value.trim() };
+    }
 
-  await createJob(mode, payload, buildBlockPolicyOnly());
+    await createJob(mode, payload, buildBlockPolicyOnly());
+  } catch (error) {
+    print(els.createOut, { error: toErrorText(error) });
+  }
 }
 
 async function createDockerJob() {
-  const pre = await runPreflight(false, true);
-  if (!pre.ok) {
-    print(els.createOut, { error: "Preflight fallo", checks: pre.checks });
-    return;
-  }
+  try {
+    const pre = await runPreflight(false, true);
+    if (!pre.ok) {
+      print(els.createOut, { error: "Preflight fallo", checks: pre.checks });
+      return;
+    }
 
-  const mode = els.dockerMode.value;
-  if (mode === "docker_image") {
-    await createJob("docker_image", {
-      image: els.dockerImage.value.trim(),
+    const mode = els.dockerMode.value;
+    if (mode === "docker_image") {
+      await createJob("docker_image", {
+        image: els.dockerImage.value.trim(),
+        saveTar: els.dockerSaveTar.checked,
+        removeImageAfterScan: els.dockerRemoveAfter.checked
+      }, buildBlockPolicyOnly());
+      return;
+    }
+
+    await createJob("dockerfile_upload", {
+      uploadId: els.dockerfileUploadId.value.trim(),
+      image: els.dockerfileImageTag.value.trim() || undefined,
       saveTar: els.dockerSaveTar.checked,
       removeImageAfterScan: els.dockerRemoveAfter.checked
     }, buildBlockPolicyOnly());
-    return;
+  } catch (error) {
+    print(els.createOut, { error: toErrorText(error) });
   }
-
-  await createJob("dockerfile_upload", {
-    uploadId: els.dockerfileUploadId.value.trim(),
-    image: els.dockerfileImageTag.value.trim() || undefined,
-    saveTar: els.dockerSaveTar.checked,
-    removeImageAfterScan: els.dockerRemoveAfter.checked
-  }, buildBlockPolicyOnly());
 }
 
 async function createManifestJob() {
-  const pre = await runPreflight(true, true);
-  if (!pre.ok) {
-    print(els.createOut, { error: "Preflight profundo fallo", checks: pre.checks });
-    return;
-  }
+  try {
+    const pre = await runPreflight(true, true);
+    if (!pre.ok) {
+      print(els.createOut, { error: "Preflight profundo fallo", checks: pre.checks });
+      return;
+    }
 
-  await createJob("k8s_manifest_upload", {
-    uploadId: els.manifestUploadId.value.trim()
-  }, buildManifestPolicy());
+    await createJob("k8s_manifest_upload", {
+      uploadId: els.manifestUploadId.value.trim()
+    }, buildManifestPolicy());
+  } catch (error) {
+    print(els.createOut, { error: toErrorText(error) });
+  }
 }
 
 async function createJob(inputType, payload, policy) {
@@ -368,6 +390,11 @@ function buildManifestPolicy() {
     return parsed;
   }
 
+  const targetUrl = els.targetUrl.value.trim();
+  if (els.deployGateEnabled.checked && !targetUrl) {
+    throw new Error("Para deploy gate en manifest debes indicar Target URL para Nuclei");
+  }
+
   return {
     blockOn: {
       critical: toNum(els.policyCritical.value, 0),
@@ -375,7 +402,7 @@ function buildManifestPolicy() {
     },
     deployGate: {
       enabled: Boolean(els.deployGateEnabled.checked),
-      targetUrl: els.targetUrl.value.trim() || undefined
+      targetUrl: targetUrl || undefined
     }
   };
 }
@@ -603,9 +630,10 @@ function renderTimeline(logs, jobStatus) {
 
   els.timeline.innerHTML = "";
   for (const stage of stages) {
+    const stageStatus = String(stageState.get(stage.key) || "pending");
     const li = document.createElement("li");
-    li.className = `t-${stageState.get(stage.key)}`;
-    li.innerHTML = `<span class="dot"></span><div><strong>${escapeHtml(stage.label)}</strong><small>${stageState.get(stage.key)}</small></div>`;
+    li.className = `t-${stageStatus}`;
+    li.innerHTML = `<span class="dot"></span><div><strong>${escapeHtml(stage.label)}</strong><small><i class="bi bi-${timelineStateIcon(stageStatus)}" aria-hidden="true"></i>${escapeHtml(stageStatus)}</small></div>`;
     els.timeline.appendChild(li);
   }
 }
@@ -655,7 +683,7 @@ async function deleteJob() {
     if (state.logPollTimer) {
       clearInterval(state.logPollTimer);
       state.logPollTimer = null;
-      els.btnPoll.textContent = "Auto refresh";
+      setButtonLabel(els.btnPoll, "Auto refresh", "arrow-repeat");
     }
     state.selectedJobId = "";
     state.selectedJobStatus = "";
@@ -674,7 +702,7 @@ function toggleAutoRefresh() {
   if (state.logPollTimer) {
     clearInterval(state.logPollTimer);
     state.logPollTimer = null;
-    els.btnPoll.textContent = "Auto refresh";
+    setButtonLabel(els.btnPoll, "Auto refresh", "arrow-repeat");
     return;
   }
 
@@ -688,7 +716,7 @@ function toggleAutoRefresh() {
     }
   }, 2000);
 
-  els.btnPoll.textContent = "Detener auto refresh";
+  setButtonLabel(els.btnPoll, "Detener auto refresh", "pause-circle-fill");
 }
 
 async function apiGet(path) {
@@ -707,7 +735,8 @@ function authHeaders() {
 
 function setBadge(el, text, kind) {
   el.className = `badge ${kind}`;
-  el.textContent = text;
+  const icon = BADGE_ICON_BY_KIND[kind] || BADGE_ICON_BY_KIND.neutral;
+  el.innerHTML = `<i class="bi bi-${icon}" aria-hidden="true"></i><span>${escapeHtml(text)}</span>`;
 }
 
 function print(el, value) {
@@ -727,6 +756,10 @@ function parseJsonSafe(raw) {
   }
 }
 
+function setButtonLabel(el, label, icon) {
+  el.innerHTML = `<i class="bi bi-${icon}" aria-hidden="true"></i><span>${escapeHtml(label)}</span>`;
+}
+
 function statusClass(status) {
   const v = String(status || "").toLowerCase();
   if (v === "succeeded") return "ok";
@@ -743,6 +776,13 @@ function severityClass(value) {
   if (v.includes("medium")) return "medium";
   if (v.includes("low")) return "low";
   return "neutral";
+}
+
+function timelineStateIcon(state) {
+  if (state === "done") return "check-circle-fill";
+  if (state === "running") return "arrow-repeat";
+  if (state === "error") return "x-octagon-fill";
+  return "pause-circle-fill";
 }
 
 function shortId(value) {
@@ -767,6 +807,10 @@ function toErrorText(error) {
   if (!error) return "unknown error";
   if (error instanceof Error) return error.message;
   return String(error);
+}
+
+function reportError(error) {
+  print(els.createOut, { error: toErrorText(error) });
 }
 
 function escapeHtml(value) {

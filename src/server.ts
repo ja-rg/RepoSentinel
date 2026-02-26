@@ -603,6 +603,12 @@ function normalizePolicyForInput(inputType: InputType, policyRaw: any) {
   if (deployGateEnabled && inputType !== "k8s_manifest_upload") {
     throw new Error("deploy gate is only supported for k8s_manifest_upload jobs");
   }
+  if (inputType === "k8s_manifest_upload" && deployGateEnabled) {
+    const targetUrl = String(policy?.deployGate?.targetUrl ?? "").trim();
+    if (!targetUrl) {
+      throw new Error("deploy gate for manifests requires policy.deployGate.targetUrl");
+    }
+  }
   if (inputType !== "k8s_manifest_upload") {
     const { deployGate: _, ...rest } = policy;
     return rest;
